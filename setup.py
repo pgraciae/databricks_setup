@@ -5,7 +5,6 @@ display(spark.sql("SHOW STORAGE CREDENTIALS"))
 
 display(spark.sql("DESCRIBE STORAGE CREDENTIAL adlg2test01_cred"))
 
-
 # COMMAND ----------
 
 # MAGIC %sql
