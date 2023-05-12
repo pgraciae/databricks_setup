@@ -82,6 +82,10 @@ display(spark.sql('SHOW CATALOGS'))
 
 # COMMAND ----------
 
+spark.sql('USE CATALOG testcatalog')
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC At this point we could assign and revoke privileges to the catalog
 # MAGIC
@@ -95,13 +99,16 @@ display(spark.sql('SHOW CATALOGS'))
 
 # COMMAND ----------
 
-spark.sql('USE CATALOG testcatalog')
 spark.sql("CREATE SCHEMA IF NOT EXISTS testschema "\
     "COMMENT 'test schema'")
 
 # COMMAND ----------
 
 display(spark.sql('SHOW SCHEMAS'))
+
+# COMMAND ----------
+
+spark.sql('USE SCHEMA testschema')
 
 # COMMAND ----------
 
@@ -133,7 +140,6 @@ display(df.take(10))
 # COMMAND ----------
 
 #save file as table in managed location
-spark.sql('USE SCHEMA testschema')
 df.write.mode('overwrite').saveAsTable('sales_managed')
 
 # COMMAND ----------
@@ -163,14 +169,94 @@ display(spark.sql('SHOW TABLES'))
 
 # COMMAND ----------
 
-table.schema
+#new schema for external tables
+spark.sql('CREATE SCHEMA IF NOT EXISTS testexternalschema')
 
 # COMMAND ----------
 
-DeltaTable.createIfNotExists().
+spark.sql('USE SCHEMA testexternalschema')
 
 # COMMAND ----------
 
-CREATE TABLE sales_csv (
-    
-)
+# MAGIC %md
+# MAGIC Create table
+
+# COMMAND ----------
+
+#python
+newDeltaTable = DeltaTable.createIfNotExists(
+        spark
+    ).tableName(
+        'sales_external_python'
+    ).addColumns(
+        table.schema #use same schema as for managed table
+    ).location(
+        'abfss://metastoredb@adlg2test01.dfs.core.windows.net/datalake/testexternalschema/sales_external_python'
+    ).execute()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Drop table
+
+# COMMAND ----------
+
+#for external tables this only deletes unity catalog metadata, the files in external location remain
+# spark.sql('DROP TABLE sales_external_python')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ##### ETL
+
+# COMMAND ----------
+
+#now the table is empty
+display(newDeltaTable.toDF())
+
+# COMMAND ----------
+
+display(spark.sql('SHOW TABLES'))
+
+# COMMAND ----------
+
+#use data from managed table to fill data (this step should be the ETL process)
+#extract
+sales_origin = spark.read.table('testschema.sales_managed')
+
+# COMMAND ----------
+
+#transform process
+sales_origin = sales_origin[sales_origin['Item'].contains('Mountain')]
+display(sales_origin.take(5))
+
+# COMMAND ----------
+
+dfnew = newDeltaTable.toDF()
+
+# COMMAND ----------
+
+dfnew.columns
+
+# COMMAND ----------
+
+https://learn.microsoft.com/en-us/azure/databricks/delta/
+
+# COMMAND ----------
+
+#Load
+#merge with delta table
+newDeltaTable.alias('sales_mountain').merge(
+    source=sales_origin,
+    condition= 'sales_origin.SalesOrderNumber = sales_mountain.SalesOrderNumber'
+).whenMatchedUpdateAll(
+).whenNotMatchedInsertAll(
+).execute()
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- as hql
+# MAGIC CREATE TABLE sales_csv (
+# MAGIC     
+# MAGIC )
